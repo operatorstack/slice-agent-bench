@@ -1,5 +1,4 @@
-# Results (regenerated per run)
-results/*.json
+# Results (keep benchmark-latest.json tracked; ignore scratch files)
 results/*.csv
 results/*.log
 
