@@ -1,0 +1,124 @@
+{
+  "results": [
+    {
+      "task": "parser_bug",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 71019,
+      "inputTokens": 156850,
+      "outputTokens": 1940
+    },
+    {
+      "task": "parser_bug",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 8438,
+      "inputTokens": 1595,
+      "outputTokens": 587
+    },
+    {
+      "task": "parser_bug",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 7558,
+      "inputTokens": 1925,
+      "outputTokens": 587
+    },
+    {
+      "task": "range_check_bug",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 82045,
+      "inputTokens": 1168757,
+      "outputTokens": 2227
+    },
+    {
+      "task": "range_check_bug",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5356,
+      "inputTokens": 1451,
+      "outputTokens": 385
+    },
+    {
+      "task": "range_check_bug",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 7355,
+      "inputTokens": 1770,
+      "outputTokens": 437
+    },
+    {
+      "task": "slug_conflict_bug",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 88456,
+      "inputTokens": 165292,
+      "outputTokens": 2131
+    },
+    {
+      "task": "slug_conflict_bug",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 11501,
+      "inputTokens": 1541,
+      "outputTokens": 550
+    },
+    {
+      "task": "slug_conflict_bug",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 2,
+      "durationMs": 13515,
+      "inputTokens": 3608,
+      "outputTokens": 799
+    },
+    {
+      "task": "config_lookup_bug",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 73010,
+      "inputTokens": 240320,
+      "outputTokens": 1944
+    },
+    {
+      "task": "config_lookup_bug",
+      "agent": "zca-naive",
+      "success": false,
+      "steps": 5,
+      "durationMs": 41643,
+      "inputTokens": 7235,
+      "outputTokens": 2685
+    },
+    {
+      "task": "config_lookup_bug",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 6644,
+      "inputTokens": 1752,
+      "outputTokens": 460
+    }
+  ],
+  "matrix": [],
+  "tasks": [
+    "parser_bug",
+    "range_check_bug",
+    "slug_conflict_bug",
+    "config_lookup_bug"
+  ],
+  "agents": [
+    "baseline",
+    "zca-naive",
+    "zca-adaptive"
+  ]
+}
