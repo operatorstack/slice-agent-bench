@@ -1,0 +1,18 @@
+{
+  "tasks": [
+    "parser_bug",
+    "range_check_bug",
+    "slug_conflict_bug",
+    "config_lookup_bug"
+  ],
+  "agents": [
+    { "name": "baseline", "type": "baseline", "maxSteps": 10 },
+    { "name": "zca-naive", "type": "zca", "projector": "naive", "maxSteps": 5 },
+    { "name": "zca-adaptive", "type": "zca", "projector": "adaptive", "maxSteps": 5 }
+  ],
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "temperature": 0
+  }
+}

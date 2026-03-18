@@ -1,0 +1,8 @@
+{
+  "maxSteps": 10,
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "temperature": 0
+  }
+}
