@@ -20,7 +20,7 @@ export function buildSliceUserMessage(state: CanonicalState): string {
   const parts: string[] = [
     `Goal: ${state.goal}`,
     "",
-    "## Failing test output",
+    `## ${state.failureLabel}`,
     "",
     "```",
     state.failure,

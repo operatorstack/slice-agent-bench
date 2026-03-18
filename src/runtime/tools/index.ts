@@ -3,23 +3,35 @@ import { readFile } from "./readFile.js";
 import { createSearchRepo } from "./searchRepo.js";
 import { editFile } from "./editFile.js";
 import { runTests } from "./runTests.js";
+import { runTypeCheck } from "./runTypeCheck.js";
 
 export interface ToolRegistry {
   handlers: Map<string, ToolHandler>;
   definitions: ToolDefinition[];
 }
 
-export function createToolRegistry(taskPath: string): ToolRegistry {
+export function createToolRegistry(
+  taskPath: string,
+  signal: "test" | "typecheck" = "test",
+): ToolRegistry {
   const searchRepo = createSearchRepo(taskPath);
 
-  const boundRunTests = (args: Record<string, unknown>) =>
-    runTests({ ...args, taskPath });
+  const verifyHandler: ToolHandler =
+    signal === "typecheck"
+      ? (args) => runTypeCheck({ ...args, taskPath })
+      : (args) => runTests({ ...args, taskPath });
+
+  const verifyToolName = signal === "typecheck" ? "runTypeCheck" : "runTests";
+  const verifyDescription =
+    signal === "typecheck"
+      ? "Run the TypeScript compiler (tsc --noEmit) to check for type errors."
+      : "Run the test suite in the task repository.";
 
   const handlers = new Map<string, ToolHandler>([
     ["readFile", readFile],
     ["searchRepo", searchRepo],
     ["editFile", editFile],
-    ["runTests", boundRunTests],
+    [verifyToolName, verifyHandler],
   ]);
 
   const definitions: ToolDefinition[] = [
@@ -60,8 +72,8 @@ export function createToolRegistry(taskPath: string): ToolRegistry {
       },
     },
     {
-      name: "runTests",
-      description: "Run the test suite in the task repository.",
+      name: verifyToolName,
+      description: verifyDescription,
       parameters: {},
     },
   ];

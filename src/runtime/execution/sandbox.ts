@@ -13,8 +13,9 @@ export interface SandboxedTask {
 export function createTaskSandbox(
   taskName: string,
   runLabel: string,
+  tasksDir?: string,
 ): SandboxedTask {
-  const originalPath = resolveTaskPath(taskName);
+  const originalPath = resolveTaskPath(taskName, tasksDir);
   const runID = Date.now();
   const dirName = `${runID}-${taskName}-${runLabel}`;
   const workPath = join(BENCH_RUNS_DIR, dirName);

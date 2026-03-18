@@ -9,13 +9,19 @@ export interface CanonicalFile {
 export interface CanonicalState {
   goal: string;
   failure: string;
+  failureLabel: string;
   files: CanonicalFile[];
 }
 
-export function canonicalizeState(slice: ProjectedSlice): CanonicalState {
+export function canonicalizeState(
+  slice: ProjectedSlice,
+  goal = "Fix the failing test by patching the source file(s).",
+  failureLabel = "Failing test output",
+): CanonicalState {
   return {
-    goal: "Fix the failing test by patching the source file(s).",
+    goal,
     failure: slice.testOutput,
+    failureLabel,
     files: slice.files.map(toCanonicalFile),
   };
 }

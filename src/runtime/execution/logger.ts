@@ -6,12 +6,37 @@ const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const CYAN = "\x1b[36m";
 const MAGENTA = "\x1b[35m";
+const BLUE = "\x1b[34m";
 
 export class Logger {
-  constructor(private readonly prefix: string) {}
+  public isVerbose: boolean;
+
+  constructor(
+    private readonly prefix: string,
+    options?: { verbose?: boolean },
+  ) {
+    this.isVerbose = options?.verbose ?? false;
+  }
 
   info(message: string): void {
     console.log(`${DIM}[${this.prefix}]${RESET} ${message}`);
+  }
+
+  verbose(label: string, body?: string): void {
+    if (!this.isVerbose) {
+      return;
+    }
+    const header = `${BLUE}${DIM}[${this.prefix}:verbose]${RESET} ${BLUE}── ${label} ──${RESET}`;
+    if (body === undefined) {
+      console.log(header);
+      return;
+    }
+    console.log(header);
+    const lines = body.split("\n");
+    for (const line of lines) {
+      console.log(`${DIM}  │${RESET} ${line}`);
+    }
+    console.log(`${DIM}  └${"─".repeat(60)}${RESET}`);
   }
 
   step(current: number, total: number): void {
