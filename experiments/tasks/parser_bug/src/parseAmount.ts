@@ -30,14 +30,13 @@ export function parseAmount(input: string): ParsedAmount {
     }
   }
 
-  const numericMatch = cleaned.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+\.?\d*)/);
+  const numericMatch = cleaned.match(/(\d+\.?\d*)/);
 
   if (!numericMatch) {
     throw new Error(`Unable to parse amount from: "${input}"`);
   }
 
-  // Remove commas from the matched string before parsing
-  const amount = parseFloat(numericMatch[1].replace(/,/g, ''));
+  const amount = parseFloat(numericMatch[1]);
 
   return { currency, amount };
 }

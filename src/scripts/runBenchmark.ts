@@ -6,6 +6,7 @@ import type { ProjectorMode } from "../agents/zca/ZCAAgent.js";
 import { createModelClient, createModelFactory } from "../model/factory.js";
 import type { ModelConfig } from "../model/factory.js";
 import { Logger } from "../runtime/execution/logger.js";
+import { createTaskSandbox } from "../runtime/execution/sandbox.js";
 import type { BenchmarkResult, BenchmarkSummary } from "../analysis/metrics/types.js";
 import { TASK_CLASSIFICATIONS } from "../analysis/metrics/types.js";
 
@@ -67,14 +68,39 @@ async function runOneAgent(
   modelConfig: ModelConfig,
   logger: Logger,
 ): Promise<BenchmarkResult> {
+  const sandbox = createTaskSandbox(taskName, agentSpec.name);
+  logger.info(`Sandboxed task at: ${sandbox.workPath}`);
+
   const startMs = Date.now();
 
-  if (agentSpec.type === "baseline") {
-    const model = createModelClient(modelConfig);
-    const agent = new BaselineAgent({
+  try {
+    if (agentSpec.type === "baseline") {
+      const model = createModelClient(modelConfig);
+      const agent = new BaselineAgent({
+        taskName,
+        maxSteps: agentSpec.maxSteps,
+        model,
+        taskPath: sandbox.workPath,
+      });
+      const result = await agent.run();
+      return {
+        task: taskName,
+        agent: agentSpec.name,
+        success: result.success,
+        steps: result.steps,
+        durationMs: Date.now() - startMs,
+        inputTokens: result.totalInputTokens,
+        outputTokens: result.totalOutputTokens,
+      };
+    }
+
+    const factory = createModelFactory(modelConfig);
+    const agent = new ZCAAgent({
       taskName,
       maxSteps: agentSpec.maxSteps,
-      model,
+      createModel: factory,
+      projector: agentSpec.projector ?? "naive",
+      taskPath: sandbox.workPath,
     });
     const result = await agent.run();
     return {
@@ -83,28 +109,26 @@ async function runOneAgent(
       success: result.success,
       steps: result.steps,
       durationMs: Date.now() - startMs,
+      inputTokens: result.totalInputTokens,
+      outputTokens: result.totalOutputTokens,
     };
+  } finally {
+    sandbox.cleanup();
   }
+}
 
-  const factory = createModelFactory(modelConfig);
-  const agent = new ZCAAgent({
-    taskName,
-    maxSteps: agentSpec.maxSteps,
-    createModel: factory,
-    projector: agentSpec.projector ?? "naive",
-  });
-  const result = await agent.run();
-  return {
-    task: taskName,
-    agent: agentSpec.name,
-    success: result.success,
-    steps: result.steps,
-    durationMs: Date.now() - startMs,
-  };
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (n >= 1_000) {
+    return `${(n / 1_000).toFixed(1)}k`;
+  }
+  return String(n);
 }
 
 function printMatrix(summary: BenchmarkSummary): void {
-  const colWidth = 20;
+  const colWidth = 28;
   const taskColWidth = 22;
 
   const header = "Task".padEnd(taskColWidth) +
@@ -132,7 +156,8 @@ function printMatrix(summary: BenchmarkSummary): void {
         const icon = cell.success ? "✓" : "✗";
         const stepStr = `${cell.steps}s`;
         const durStr = `${(cell.durationMs / 1000).toFixed(1)}s`;
-        row += `${icon} ${stepStr} ${durStr}`.padEnd(colWidth);
+        const tokStr = `${formatTokens(cell.inputTokens + cell.outputTokens)}tok`;
+        row += `${icon} ${stepStr} ${durStr} ${tokStr}`.padEnd(colWidth);
       } else {
         row += "—".padEnd(colWidth);
       }
@@ -142,13 +167,24 @@ function printMatrix(summary: BenchmarkSummary): void {
 
   console.log("─".repeat(header.length));
 
-  const total = summary.agents.map((agent) => {
+  let totalRow = "Pass rate".padEnd(taskColWidth);
+  for (const agent of summary.agents) {
     const wins = summary.results.filter(
       (r) => r.agent === agent && r.success,
     ).length;
-    return `${wins}/${summary.tasks.length}`.padEnd(colWidth);
-  });
-  console.log("Pass rate".padEnd(taskColWidth) + total.join(""));
+    totalRow += `${wins}/${summary.tasks.length}`.padEnd(colWidth);
+  }
+  console.log(totalRow);
+
+  let tokenRow = "Total tokens".padEnd(taskColWidth);
+  for (const agent of summary.agents) {
+    const agentResults = summary.results.filter((r) => r.agent === agent);
+    const totalIn = agentResults.reduce((s, r) => s + r.inputTokens, 0);
+    const totalOut = agentResults.reduce((s, r) => s + r.outputTokens, 0);
+    tokenRow += `${formatTokens(totalIn)}in/${formatTokens(totalOut)}out`.padEnd(colWidth);
+  }
+  console.log(tokenRow);
+
   console.log("═".repeat(header.length));
   console.log();
 }
@@ -179,7 +215,9 @@ async function main(): Promise<void> {
         const result = await runOneAgent(task, agentSpec, config.model, logger);
         results.push(result);
         logger.info(
-          `Done: ${result.success ? "PASS" : "FAIL"} in ${result.steps} steps (${(result.durationMs / 1000).toFixed(1)}s)`,
+          `Done: ${result.success ? "PASS" : "FAIL"} in ${result.steps} steps ` +
+          `(${(result.durationMs / 1000).toFixed(1)}s, ` +
+          `${formatTokens(result.inputTokens)}in/${formatTokens(result.outputTokens)}out)`,
         );
       } catch (error) {
         logger.error(
@@ -191,6 +229,8 @@ async function main(): Promise<void> {
           success: false,
           steps: 0,
           durationMs: 0,
+          inputTokens: 0,
+          outputTokens: 0,
         });
       }
     }

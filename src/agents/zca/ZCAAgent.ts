@@ -4,7 +4,8 @@ import { Logger } from "../../runtime/execution/logger.js";
 import { projectFailureSlice } from "./projectFailureSlice.js";
 import { projectAdaptiveSlice } from "./adaptiveProjector.js";
 import { runZCALoop } from "./zcaLoop.js";
-import type { Projector } from "./zcaLoop.js";
+import type { Projector, ZCARunResult } from "./zcaLoop.js";
+export type { ZCARunResult } from "./zcaLoop.js";
 
 export type ProjectorMode = "naive" | "adaptive";
 
@@ -13,11 +14,7 @@ export interface ZCAAgentConfig {
   maxSteps: number;
   createModel: () => ModelClient;
   projector?: ProjectorMode;
-}
-
-export interface ZCARunResult {
-  success: boolean;
-  steps: number;
+  taskPath?: string;
 }
 
 export class ZCAAgent {
@@ -28,7 +25,7 @@ export class ZCAAgent {
 
   constructor(config: ZCAAgentConfig) {
     this.config = config;
-    this.taskPath = resolveTaskPath(config.taskName);
+    this.taskPath = config.taskPath ?? resolveTaskPath(config.taskName);
     this.logger = new Logger("zca");
 
     const mode = config.projector ?? "naive";
