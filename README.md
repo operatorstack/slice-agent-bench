@@ -1,159 +1,301 @@
-# slice-agent-bench
+# Slice-Agent-Bench
 
-A benchmark for comparing coding agent execution architectures — specifically, whether **slice-isolated execution with fresh projection** outperforms **context accumulation via long conversation history** on bug-fix tasks of varying difficulty.
+**Does a coding agent need to explore a repo, or can it operate on a projected slice?**
 
-## Motivation
+Slice-Agent-Bench explores an alternative runtime design for coding agents based on **slice-isolated execution**.
 
-Traditional coding agents accumulate a growing conversation history as they explore, read files, and attempt fixes. This mirrors how most agent frameworks work: the model sees everything it has done so far and decides what to do next.
+Instead of accumulating a growing context while exploring a repository, the agent repeatedly **re-observes the environment and operates on a minimal projected slice of the codebase**.
 
-The problem — observed first in browser automation, then generalized — is that **accumulated context becomes a liability in non-deterministic environments**. The model carries forward stale observations, repeats failed strategies, and wastes steps exploring files it has already read.
+The goal of the benchmark is to isolate a simple question:
 
-ZCA (Zero-Context Architecture) is the alternative: re-observe the environment fresh each iteration, project a minimal slice of the current state, and let the model operate only on that. No history, no exploration — just the current failure and the relevant code.
+> When debugging code, how much of the repository does an agent actually need to see?
 
-This connects to LeCun's objective-driven AI framework for non-deterministic world models: the projector is the perception module, the canonical state is the world state representation, and re-projection each step replaces reliance on predicted state from accumulated history.
+The repository contains a small set of controlled bug-fix tasks designed to evaluate how different execution architectures behave when solving the same problems.
 
-## The research question
+---
 
-> When does projection help, and when does projection become the bottleneck?
+# Motivation
 
-The benchmark tests this across two axes:
+Most coding agents follow a **context accumulation loop**:
 
-### Axis 1: Task locality
+```text
+search → read files → search → read more → edit → run tests
+```
 
-How many files need to change?
+Each step adds more information to the conversation history.
+
+Over time the model sees:
+
+- previously read files  
+- earlier reasoning steps  
+- intermediate edits  
+- tool outputs  
+
+This leads to **very large contexts and high token usage**.
+
+Slice-Agent-Bench evaluates an alternative execution architecture called **Zero Context Architecture (ZCA)**.
+
+Instead of accumulating context, the agent **re-observes the environment each iteration** and only sends a **minimal slice of relevant files** to the model.
+
+```text
+run tests → project slice → edit → run tests → re-project
+```
+
+No conversation history is retained between iterations.
+
+---
+
+# What is ZCA?
+
+**Zero-Context Architecture (ZCA)** is a runtime pattern for agent design where the model does not carry forward a growing interaction history.
+
+Instead, each iteration follows a bounded loop:
+
+```text
+observe current failure
+→ project a minimal relevant slice
+→ apply the model as a local operator
+→ verify
+→ re-observe
+```
+
+The idea is to replace **context accumulation** with **fresh state projection**.
+
+In this benchmark, ZCA is applied to coding agents: the runtime isolates a small slice of the repository relevant to the current failure, and the model only operates on that slice.
+
+The design is loosely inspired by feedback loops in control systems, where the system is repeatedly re-observed and corrected from current state rather than relying on accumulated internal history.
+
+---
+
+# Benchmark design
+
+Each task is a small TypeScript project containing:
+
+- a minimal codebase  
+- one failing test  
+- exactly one bug  
+
+Agents must modify the code so that the test suite passes.
+
+Tasks vary along two axes:
+
+## Task locality
+
+How many files are required to fix the bug.
 
 | Level | Description |
-|---|---|
-| **L1** | Single-file bug, no distractors |
-| **L2** | Single-file bug, plausible distractors nearby |
-| **L3** | Two-file dependency bug |
-| **L4** | Multi-file architectural bug |
+|------|-------------|
+| L1 | Single file bug |
+| L2 | Two files involved |
+| L3 | Multiple files involved |
 
-### Axis 2: Projection observability
+## Projection observability
 
-How easy is it to infer the right slice from the failure?
+How obvious the bug source is from the failure signal.
 
 | Level | Description |
-|---|---|
-| **O1** | Failure output clearly points to file/function |
-| **O2** | Failure output points to component, not exact file |
-| **O3** | Failure output is ambiguous |
-| **O4** | Failure output does not reveal the source at all |
+|------|-------------|
+| O1 | Directly observable from stack trace |
+| O2 | Requires reasoning across files |
+| O3 | Ambiguous failure location |
 
-## Benchmark tasks
+---
 
-| Task | Locality | Observability | Bug |
+# Agents compared
+
+Three agents are evaluated.
+
+## Baseline agent
+
+Traditional coding agent loop.
+
+```text
+search
+read file
+search
+read more files
+edit
+run tests
+repeat
+```
+
+Context grows across iterations. A "step" is counted only when the agent makes an edit and re-runs tests. Read-only tool calls (search, read) are free sub-iterations within each step, so the agent has room to explore before committing a change.
+
+---
+
+## ZCA Naive
+
+Slice-isolated execution with a simple projector.
+
+The failing test identifies a candidate file which is sent to the model.
+
+---
+
+## ZCA Adaptive
+
+Slice-isolated execution with a multi-file projector.
+
+Candidate files are selected using heuristics such as:
+
+- stack trace files  
+- test imports  
+- dependency relationships  
+
+This allows the agent to include the correct files even when the failure source is ambiguous.
+
+---
+
+# Experimental results
+
+Two benchmark configurations were run.
+
+---
+
+# Experiment 1 — Same model comparison
+
+All agents use **Claude Sonnet 4**.
+
+| Task | Baseline (Sonnet) | ZCA Naive (Sonnet) | ZCA Adaptive (Sonnet) |
 |---|---|---|---|
-| `parser_bug` | L1 | O1 | Regex doesn't handle comma-separated thousands |
-| `range_check_bug` | L2 | O1 | Off-by-one boundary (`<` vs `<=`), distractors in tiers/validation files |
-| `slug_conflict_bug` | L3 | O2 | Two files need fixing: slugify (consecutive hyphens) + buildIndex (no dedup) |
-| `config_lookup_bug` | L2 | O3 | Test calls correct code — actual bug is a typo in config data in a different file |
+| parser_bug (L1/O1) | FAIL — 10 steps, 71s, 159k tokens | PASS — 1 step, 8s, 2.2k tokens | PASS — 1 step, 8s, 2.5k tokens |
+| range_check_bug (L2/O1) | FAIL — 10 steps, 82s, 1.2M tokens | PASS — 1 step, 5s, 1.8k tokens | PASS — 1 step, 7s, 2.2k tokens |
+| slug_conflict_bug (L3/O2) | FAIL — 10 steps, 89s, 167k tokens | PASS — 1 step, 12s, 2.1k tokens | PASS — 2 steps, 14s, 4.4k tokens |
+| config_lookup_bug (L2/O3) | FAIL — 10 steps, 73s, 242k tokens | FAIL — 5 steps, 42s, 9.9k tokens | PASS — 1 step, 7s, 2.2k tokens |
 
-Each task is a self-contained TypeScript + Vitest project with exactly 1 failing test.
+| Agent | Pass rate | Input tokens |
+|------|-----------|--------------|
+| Baseline | 0 / 4 | 1.7M |
+| ZCA Naive | 3 / 4 | 11.8k |
+| ZCA Adaptive | 4 / 4 | 9.1k |
 
-## Agents compared
+### Observation
 
-### A. Baseline — long-context loop
+With the **same model**, execution architecture dramatically changes behavior.
 
-Traditional agent with full tool access (`readFile`, `searchRepo`, `editFile`, `runTests`). Accumulates conversation history across steps. The model decides what to explore and when to edit.
+The baseline agent has 10 edit-steps (read-only exploration is free and uncapped within each step), but Sonnet consistently explores without committing edits, exhausting its budget. The same baseline architecture passes 4/4 when given Opus (see Experiment 2), suggesting that stronger models cope better with open-ended exploration loops while weaker models benefit more from architectural guardrails.
 
-### B. ZCA with naive projector
+The ZCA agents sidestep this entirely — they receive a pre-projected slice and edit immediately.
 
-Maps the failing test filename to a single source file. Stateless per step — each iteration sends only the current test output and projected source code. The model can only call `editFile`.
+---
 
-### C. ZCA with adaptive projector
+# Experiment 2 — Cross model comparison
 
-Extends the naive projector with a bounded exploration budget:
-1. Parse the primary file's imports
-2. Run one `grep` search for a key symbol from the failure
-3. Include up to 3 files in the slice
+Baseline uses **Claude Opus 4**.  
+ZCA agents use **Claude Haiku 4.5**.
 
-This keeps the agent slice-isolated while recovering coverage on multi-file and ambiguous-source tasks.
-
-## Results (Claude Sonnet 4)
-
-| Task | Baseline | ZCA Naive | ZCA Adaptive |
+| Task | Baseline (Opus 4) | ZCA Naive (Haiku 4.5) | ZCA Adaptive (Haiku 4.5) |
 |---|---|---|---|
-| parser_bug (L1/O1) | FAIL — 10 steps, 69s, 270k tok | **PASS** — 1 step, 10s, 2.2k tok | **PASS** — 1 step, 8s, 2.5k tok |
-| range_check_bug (L2/O1) | FAIL — 10 steps, 181s, 1.5M tok | **PASS** — 1 step, 8s, 1.8k tok | **PASS** — 1 step, 7s, 2.2k tok |
-| slug_conflict_bug (L3/O2) | FAIL — 10 steps, 83s, 1.4M tok | **PASS** — 2 steps, 18s, 4.3k tok | **PASS** — 2 steps, 13s, 4.4k tok |
-| config_lookup_bug (L2/O3) | FAIL — 10 steps, 75s, 245k tok | FAIL — 5 steps, 48s, 10.4k tok | **PASS** — 1 step, 7s, 2.2k tok |
-| **Pass rate** | **0 / 4** | **3 / 4** | **4 / 4** |
-| **Total tokens** | **3.4M in / 8.5k out** | **13.6k in / 5.2k out** | **9.1k in / 2.3k out** |
+| parser_bug (L1/O1) | PASS — 8 steps, 103s, 164k tokens | PASS — 1 step, 5s, 2.4k tokens | PASS — 1 step, 5s, 2.8k tokens |
+| range_check_bug (L2/O1) | PASS — 4 steps, 38s, 34k tokens | PASS — 1 step, 4s, 2.0k tokens | PASS — 1 step, 4s, 2.4k tokens |
+| slug_conflict_bug (L3/O2) | PASS — 6 steps, 51s, 45k tokens | PASS — 2 steps, 11s, 4.9k tokens | PASS — 2 steps, 9s, 4.9k tokens |
+| config_lookup_bug (L2/O3) | PASS — 5 steps, 40s, 34k tokens | FAIL — 5 steps, 27s, 13.7k tokens | PASS — 1 step, 4s, 2.4k tokens |
 
-### Key findings
+| Agent | Pass rate | Input tokens |
+|------|-----------|--------------|
+| Baseline Opus | 4 / 4 | 270k |
+| ZCA Naive Haiku | 3 / 4 | 17k |
+| ZCA Adaptive Haiku | 4 / 4 | 10k |
 
-**Token efficiency**: ZCA Adaptive uses **380x fewer input tokens** than baseline across all tasks. Even ZCA Naive (254x fewer) dramatically outperforms context accumulation on token budget.
+### Observation
 
-**Time**: The baseline takes 408s total across 4 tasks. ZCA Adaptive takes 35s — an **11.7x speedup**.
+The adaptive ZCA agent running on Haiku (the cheapest Anthropic model) matches the success rate of the baseline running on Opus (the most expensive), while using **27x fewer input tokens**. This suggests that slice-isolated execution can make smaller models viable for tasks that would otherwise require a frontier model.
 
-**Baseline failure mode**: The baseline model makes 30 model calls (10 steps × 3 read-only sub-turns) searching and reading files but never commits to an edit. It reads `src/parseAmount.ts` correctly on step 3 but continues searching for 7 more steps. The accumulated history becomes the obstacle — the model gets stuck in an explore loop rather than transitioning to fixing. On `range_check_bug`, it finally attempts an edit at step 10 (the last step) but runs out of budget.
+---
 
-**Projection quality determines the boundary**: Naive ZCA fails on `config_lookup_bug` because the projector serves the wrong file — `featureCheck.ts` has no bug, the typo is in `configStore.ts`. The adaptive projector follows the import chain, includes `configStore.ts`, and fixes it in one step. This is the benchmark's core design point: **projector quality, not model quality, determines ZCA's ceiling**.
+# Key findings
 
-**Stateless re-projection enables recovery**: On `slug_conflict_bug` (two-file task), both ZCA variants needed 2 steps. The first edit fixed one file, the fresh re-projection on step 2 revealed the remaining issue. No conversation history was needed — re-observing the environment was sufficient.
+### Execution architecture matters
 
-## The thesis
+With the same model (Sonnet), the baseline agent fails all tasks while ZCA Adaptive solves all tasks.
 
-Not "ZCA always beats normal agents" — but:
+This suggests that agent runtime design can strongly affect performance.
 
-> **Slice-isolated execution with fresh projection outperforms context accumulation on localizable tasks. Performance on non-local tasks is determined by projector quality, not model quality.**
+---
 
-The adaptive projector demonstrates that improving the perception layer restores ZCA's advantage without turning back into a full long-context agent.
+### Slice projection determines the ceiling
 
-## Running the benchmark
+The naive ZCA agent fails when the projected slice omits relevant files.
+
+The adaptive projector resolves this by including additional candidate files.
+
+---
+
+### Context size can be dramatically reduced
+
+In the same-model experiment, the baseline consumed **1.7M input tokens** across 4 tasks while failing all of them. ZCA Adaptive consumed **9.1k tokens** and passed all four — a **187x reduction** with better outcomes.
+
+---
+
+# Limitations
+
+This benchmark is intentionally small and designed as a **diagnostic experiment**, not a large-scale evaluation.
+
+It does not attempt to compete with larger datasets such as SWE-bench.
+
+Instead it isolates architectural tradeoffs between:
+
+- context accumulation  
+- slice projection  
+
+Future work may explore how slice-isolated execution behaves on larger repositories.
+
+---
+
+# Running the benchmark
 
 ```bash
-# Install harness dependencies
+export ANTHROPIC_API_KEY=YOUR_KEY
 npm install
-
-# Install task dependencies
-cd experiments/tasks/parser_bug && npm install && cd ../../..
-cd experiments/tasks/range_check_bug && npm install && cd ../../..
-cd experiments/tasks/slug_conflict_bug && npm install && cd ../../..
-cd experiments/tasks/config_lookup_bug && npm install && cd ../../..
-
-# Run individual agents
-export ANTHROPIC_API_KEY=sk-...
-npm run baseline -- parser_bug
-npm run zca -- range_check_bug
-npm run zca -- config_lookup_bug configs/zca-adaptive.json
-
-# Run full benchmark matrix
-npm run benchmark
-
-# Typecheck
-npm run typecheck
+npm run benchmark -- configs/benchmark.json
 ```
 
-Results are saved to `results/benchmark-latest.json`.
+Results are saved to `results/<config-name>.json`, e.g.:
 
-## Repository layout
-
-```
-slice-agent-bench/
-├── experiments/tasks/         # Benchmark task projects (each self-contained)
-│   ├── parser_bug/            # L1/O1 — local obvious
-│   ├── range_check_bug/       # L2/O1 — local misleading
-│   ├── slug_conflict_bug/     # L3/O2 — two-file dependency
-│   └── config_lookup_bug/     # L2/O3 — ambiguous source
-├── src/
-│   ├── agents/baseline/       # Baseline long-context agent
-│   ├── agents/zca/            # ZCA agent (naive + adaptive projectors)
-│   ├── model/                 # Model client abstraction (Anthropic, stub)
-│   ├── runtime/tools/         # Shared tools (readFile, searchRepo, editFile, runTests)
-│   ├── runtime/execution/     # Task path resolution, logger
-│   ├── analysis/metrics/      # Benchmark result types
-│   └── scripts/               # CLI entrypoints (runBaseline, runZCA, runBenchmark)
-├── configs/                   # Agent and benchmark configurations
-└── results/                   # Run outputs (git-ignored)
+```text
+results/benchmark.json
+results/benchmark-cross-model.json
 ```
 
-## Known limitations
 
-- 4 tasks is a small benchmark — demonstrates the pattern but doesn't prove generality
-- L4 (multi-file architectural) and O4 (opaque failure) tasks are not yet represented
-- The baseline agent never successfully edits within its step budget — a smarter baseline (e.g. multi-tool-call per turn, or an explicit "explore then edit" phase) would make the comparison stronger
-- Irrelevant file edits and oscillation metrics are not yet captured
-- The adaptive projector is simple (import-following + grep) — a production projector would need static analysis or call graph tracing
-- Only tested with Claude Sonnet 4 — results may vary across model families
+---
+
+# Repository structure
+
+```text
+experiments/tasks/            # benchmark task definitions
+  parser_bug/
+  range_check_bug/
+  slug_conflict_bug/
+  config_lookup_bug/
+
+src/
+  agents/baseline/            # long-context baseline agent
+  agents/zca/                 # ZCA agent + naive/adaptive projectors
+  model/                      # model client abstraction (Anthropic SDK)
+  runtime/                    # sandbox execution and tool registry
+  analysis/                   # result types and metrics
+  scripts/                    # CLI entrypoints (runBenchmark, runBaseline, runZCA)
+
+configs/
+  benchmark.json              # same-model (Sonnet) config
+  benchmark-cross-model.json  # cross-model (Opus vs Haiku) config
+
+results/                      # benchmark output JSON files
+```
+
+
+---
+
+# Future work
+
+Possible directions include:
+
+- expanding the benchmark with additional locality and observability levels  
+- evaluating ZCA agents on larger repositories  
+- improving slice projection heuristics  
+
+---
+
+# License
+
+MIT

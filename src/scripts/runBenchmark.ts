@@ -15,6 +15,7 @@ interface AgentSpec {
   type: "baseline" | "zca";
   projector?: ProjectorMode;
   maxSteps: number;
+  model?: ModelConfig;
 }
 
 interface BenchmarkConfig {
@@ -41,6 +42,16 @@ function parseConfig(raw: unknown): BenchmarkConfig {
 
   const agents: AgentSpec[] = agentsRaw.map((a) => {
     const spec = a as Record<string, unknown>;
+    const agentModelRaw = spec["model"];
+    let agentModel: ModelConfig | undefined;
+    if (typeof agentModelRaw === "object" && agentModelRaw !== null) {
+      const m = agentModelRaw as Record<string, unknown>;
+      agentModel = {
+        provider: String(m["provider"] ?? "stub"),
+        model: String(m["model"] ?? "stub"),
+        temperature: Number(m["temperature"] ?? 0),
+      };
+    }
     return {
       name: String(spec["name"] ?? "unknown"),
       type: String(spec["type"] ?? "baseline") as "baseline" | "zca",
@@ -48,6 +59,7 @@ function parseConfig(raw: unknown): BenchmarkConfig {
         ? (spec["projector"] as ProjectorMode)
         : undefined,
       maxSteps: Number(spec["maxSteps"] ?? 10),
+      model: agentModel,
     };
   });
 
@@ -65,11 +77,13 @@ function parseConfig(raw: unknown): BenchmarkConfig {
 async function runOneAgent(
   taskName: string,
   agentSpec: AgentSpec,
-  modelConfig: ModelConfig,
+  defaultModelConfig: ModelConfig,
   logger: Logger,
 ): Promise<BenchmarkResult> {
+  const modelConfig = agentSpec.model ?? defaultModelConfig;
   const sandbox = createTaskSandbox(taskName, agentSpec.name);
   logger.info(`Sandboxed task at: ${sandbox.workPath}`);
+  logger.info(`Model: ${modelConfig.provider}/${modelConfig.model}`);
 
   const startMs = Date.now();
 
@@ -200,7 +214,7 @@ async function main(): Promise<void> {
 
   logger.info(`Tasks: ${config.tasks.join(", ")}`);
   logger.info(`Agents: ${config.agents.map((a) => a.name).join(", ")}`);
-  logger.info(`Model: ${config.model.provider}/${config.model.model}`);
+  logger.info(`Default model: ${config.model.provider}/${config.model.model}`);
 
   const results: BenchmarkResult[] = [];
 
@@ -245,11 +259,14 @@ async function main(): Promise<void> {
 
   printMatrix(summary);
 
-  const jsonPath = resolve("results/benchmark-latest.json");
   const { mkdir, writeFile } = await import("node:fs/promises");
+  const { basename } = await import("node:path");
   await mkdir(resolve("results"), { recursive: true });
-  await writeFile(jsonPath, JSON.stringify(summary, null, 2));
-  logger.info(`Results saved to ${jsonPath}`);
+
+  const configName = basename(configPath, ".json");
+  const namedPath = resolve(`results/${configName}.json`);
+  await writeFile(namedPath, JSON.stringify(summary, null, 2));
+  logger.info(`Results saved to ${namedPath}`);
 
   const allPassed = results.every((r) => r.success);
   process.exit(allPassed ? 0 : 1);
