@@ -35,4 +35,12 @@ export const TASK_CLASSIFICATIONS: Record<string, TaskClassification> = {
   range_check_bug: { locality: "L2", observability: "O1" },
   slug_conflict_bug: { locality: "L3", observability: "O2" },
   config_lookup_bug: { locality: "L2", observability: "O3" },
+
+  wrong_return_type: { locality: "L1", observability: "O1" },
+  missing_property: { locality: "L1", observability: "O1" },
+  undefined_name: { locality: "L1", observability: "O1" },
+
+  cross_file_return_type: { locality: "L2", observability: "O1" },
+  wrong_method_call: { locality: "L2", observability: "O2" },
+  unresolved_cross_import: { locality: "L2", observability: "O2" },
 };

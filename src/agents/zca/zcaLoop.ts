@@ -1,5 +1,5 @@
 import type { ModelClient, Message } from "../../model/types.js";
-import type { ToolDefinition } from "../../runtime/tools/types.js";
+import type { ToolDefinition, ToolResult } from "../../runtime/tools/types.js";
 import { Logger } from "../../runtime/execution/logger.js";
 import { runTests } from "../../runtime/tools/runTests.js";
 import { editFile } from "../../runtime/tools/editFile.js";
@@ -35,22 +35,32 @@ export type Projector = (
   testOutput: string,
 ) => Promise<ProjectedSlice>;
 
+type VerifyFn = (args: Record<string, unknown>) => Promise<ToolResult>;
+
 interface LoopContext {
   createModel: () => ModelClient;
   project: Projector;
   maxSteps: number;
   taskPath: string;
   logger: Logger;
+  verify?: VerifyFn;
+  systemPrompt?: string;
+  goal?: string;
+  failureLabel?: string;
 }
 
 export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
   const { createModel, project, maxSteps, taskPath, logger } = ctx;
+  const verify = ctx.verify ?? ((args) => runTests(args));
+  const systemPrompt = ctx.systemPrompt ?? ZCA_SYSTEM_PROMPT;
+  const goal = ctx.goal ?? "Fix the failing test by patching the source file(s).";
+  const failureLabel = ctx.failureLabel ?? "Failing test output";
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  logger.info("Running initial test suite...");
-  const initialResult = await runTests({ taskPath });
+  logger.info("Running initial verification...");
+  const initialResult = await verify({ taskPath });
 
   if (initialResult.success) {
     logger.success("All tests already pass. Nothing to do.");
@@ -58,6 +68,7 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
   }
 
   logger.warn("Tests failing. Starting ZCA loop.");
+  logger.verbose("Initial test output", initialResult.output);
 
   let latestTestOutput = initialResult.output;
   let lastStep = 0;
@@ -71,12 +82,25 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
     const fileNames = slice.files.map((f) => f.relativePath).join(", ");
     logger.info(`Slice files: ${fileNames} (${slice.files.length} file(s))`);
 
-    const state = canonicalizeState(slice);
+    for (const file of slice.files) {
+      logger.verbose(
+        `Projected file: ${file.relativePath} (${file.sourceCode.length} chars)`,
+        file.sourceCode,
+      );
+    }
+
+    const state = canonicalizeState(slice, goal, failureLabel);
+    const userMessage = buildSliceUserMessage(state);
+    logger.verbose("System prompt", systemPrompt);
+    logger.verbose(
+      `Canonicalized user message (${userMessage.length} chars)`,
+      userMessage,
+    );
 
     const model = createModel();
     const messages: Message[] = [
-      { role: "system", content: ZCA_SYSTEM_PROMPT },
-      { role: "user", content: buildSliceUserMessage(state) },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     logger.info("Sending slice to model...");
@@ -85,7 +109,22 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
     if (response.tokenUsage) {
       totalInputTokens += response.tokenUsage.inputTokens;
       totalOutputTokens += response.tokenUsage.outputTokens;
+      logger.verbose(
+        "Token usage this step",
+        `Input: ${response.tokenUsage.inputTokens}  Output: ${response.tokenUsage.outputTokens}`,
+      );
     }
+
+    if (response.content) {
+      logger.verbose("Model reasoning", response.content);
+    }
+
+    logger.verbose(
+      `Tool calls (${response.toolCalls.length})`,
+      response.toolCalls
+        .map((tc) => `${tc.name}(${JSON.stringify(tc.arguments, null, 2)})`)
+        .join("\n\n"),
+    );
 
     let applied = false;
 
@@ -95,6 +134,10 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
         continue;
       }
       logger.tool("editFile", { path: toolCall.arguments["path"] });
+      logger.verbose(
+        `Edit content → ${toolCall.arguments["path"]}`,
+        String(toolCall.arguments["content"] ?? ""),
+      );
       await editFile(toolCall.arguments);
       applied = true;
     }
@@ -104,8 +147,9 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
       break;
     }
 
-    logger.info("Re-running tests...");
-    const testResult = await runTests({ taskPath });
+    logger.info("Re-running verification...");
+    const testResult = await verify({ taskPath });
+    logger.verbose("Post-edit verification output", testResult.output);
 
     if (testResult.success) {
       logger.success(`All tests pass after ${step} step(s).`);

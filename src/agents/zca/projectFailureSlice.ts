@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { Logger } from "../../runtime/execution/logger.js";
 
 export interface SliceFile {
   filePath: string;
@@ -12,22 +14,27 @@ export interface ProjectedSlice {
   files: SliceFile[];
 }
 
-/**
- * Naive projector: extracts a single-file slice from the task repo.
- *
- * Reads the failing test output and the source file most likely responsible
- * for the failure. The model never sees the broader repo — only this slice.
- */
 export async function projectFailureSlice(
   taskPath: string,
-  testOutput: string,
+  failureOutput: string,
+  logger?: Logger,
+  entryFile?: string,
 ): Promise<ProjectedSlice> {
-  const relativePath = inferSourceFile(testOutput);
+  const relativePath = entryFile ?? inferSourceFile(failureOutput);
+  logger?.verbose("Naive projector: entry file", relativePath);
   const filePath = resolve(join(taskPath, relativePath));
+
+  if (!existsSync(filePath)) {
+    throw new Error(
+      `Projector entry file not found: ${relativePath} (resolved: ${filePath}). ` +
+      `This usually means the failure output could not be mapped to a source file.`,
+    );
+  }
+
   const sourceCode = await readFile(filePath, "utf-8");
 
   return {
-    testOutput,
+    testOutput: failureOutput,
     files: [{ filePath, relativePath, sourceCode }],
   };
 }

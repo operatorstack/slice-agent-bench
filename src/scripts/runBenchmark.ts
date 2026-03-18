@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { BaselineAgent } from "../agents/baseline/BaselineAgent.js";
 import { ZCAAgent } from "../agents/zca/ZCAAgent.js";
-import type { ProjectorMode } from "../agents/zca/ZCAAgent.js";
+import type { ProjectorMode, SignalType } from "../agents/zca/ZCAAgent.js";
 import { createModelClient, createModelFactory } from "../model/factory.js";
 import type { ModelConfig } from "../model/factory.js";
 import { Logger } from "../runtime/execution/logger.js";
@@ -16,12 +16,15 @@ interface AgentSpec {
   projector?: ProjectorMode;
   maxSteps: number;
   model?: ModelConfig;
+  signal?: SignalType;
 }
 
 interface BenchmarkConfig {
   tasks: string[];
   agents: AgentSpec[];
   model: ModelConfig;
+  signal?: SignalType;
+  tasksDir?: string;
 }
 
 function parseConfig(raw: unknown): BenchmarkConfig {
@@ -60,8 +63,19 @@ function parseConfig(raw: unknown): BenchmarkConfig {
         : undefined,
       maxSteps: Number(spec["maxSteps"] ?? 10),
       model: agentModel,
+      signal: typeof spec["signal"] === "string"
+        ? (spec["signal"] as SignalType)
+        : undefined,
     };
   });
+
+  const signal = typeof obj["signal"] === "string"
+    ? (obj["signal"] as SignalType)
+    : undefined;
+
+  const tasksDir = typeof obj["tasksDir"] === "string"
+    ? obj["tasksDir"]
+    : undefined;
 
   return {
     tasks,
@@ -71,6 +85,8 @@ function parseConfig(raw: unknown): BenchmarkConfig {
       model: String(modelSection["model"] ?? "stub"),
       temperature: Number(modelSection["temperature"] ?? 0),
     },
+    signal,
+    tasksDir,
   };
 }
 
@@ -79,11 +95,17 @@ async function runOneAgent(
   agentSpec: AgentSpec,
   defaultModelConfig: ModelConfig,
   logger: Logger,
+  globalSignal?: SignalType,
+  tasksDir?: string,
 ): Promise<BenchmarkResult> {
   const modelConfig = agentSpec.model ?? defaultModelConfig;
-  const sandbox = createTaskSandbox(taskName, agentSpec.name);
+  const signal = agentSpec.signal ?? globalSignal ?? "test";
+  const sandbox = createTaskSandbox(taskName, agentSpec.name, tasksDir);
   logger.info(`Sandboxed task at: ${sandbox.workPath}`);
   logger.info(`Model: ${modelConfig.provider}/${modelConfig.model}`);
+  if (signal !== "test") {
+    logger.info(`Signal: ${signal}`);
+  }
 
   const startMs = Date.now();
 
@@ -95,6 +117,7 @@ async function runOneAgent(
         maxSteps: agentSpec.maxSteps,
         model,
         taskPath: sandbox.workPath,
+        signal,
       });
       const result = await agent.run();
       return {
@@ -115,6 +138,7 @@ async function runOneAgent(
       createModel: factory,
       projector: agentSpec.projector ?? "naive",
       taskPath: sandbox.workPath,
+      signal,
     });
     const result = await agent.run();
     return {
@@ -226,7 +250,9 @@ async function main(): Promise<void> {
       logger.info(`${"─".repeat(50)}`);
 
       try {
-        const result = await runOneAgent(task, agentSpec, config.model, logger);
+        const result = await runOneAgent(
+          task, agentSpec, config.model, logger, config.signal, config.tasksDir,
+        );
         results.push(result);
         logger.info(
           `Done: ${result.success ? "PASS" : "FAIL"} in ${result.steps} steps ` +

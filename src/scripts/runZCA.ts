@@ -62,17 +62,24 @@ function createModelFactory(config: ZCAConfig): () => ModelClient {
 }
 
 async function main(): Promise<void> {
-  const logger = new Logger("run-zca");
+  const args = process.argv.slice(2);
+  const verbose = args.includes("--verbose");
+  const positional = args.filter((a) => !a.startsWith("--"));
 
-  const taskName = process.argv[2];
+  const logger = new Logger("run-zca", { verbose });
+
+  const taskName = positional[0];
   if (!taskName) {
-    logger.error("Usage: tsx src/scripts/runZCA.ts <task-name> [config-path]");
-    logger.info("Example: tsx src/scripts/runZCA.ts parser_bug");
+    logger.error("Usage: tsx src/scripts/runZCA.ts <task-name> [config-path] [--verbose]");
+    logger.info("Example: tsx src/scripts/runZCA.ts parser_bug --verbose");
     process.exit(1);
   }
 
-  const configPath = process.argv[3] ?? "configs/zca.json";
+  const configPath = positional[1] ?? "configs/zca.json";
   logger.info(`Loading config from ${configPath}`);
+  if (verbose) {
+    logger.info("Verbose mode enabled");
+  }
 
   const raw = await readFile(resolve(configPath), "utf-8");
   const config = parseConfig(JSON.parse(raw));
@@ -90,6 +97,7 @@ async function main(): Promise<void> {
       createModel,
       projector,
       taskPath: sandbox.workPath,
+      verbose,
     });
 
     logger.info(`Starting ZCA agent on task: ${taskName}`);

@@ -1,0 +1,22 @@
+{
+  "signal": "typecheck",
+  "tasksDir": "experiments/tasks-typecheck",
+  "tasks": [
+    "wrong_return_type",
+    "missing_property",
+    "undefined_name",
+    "cross_file_return_type",
+    "wrong_method_call",
+    "unresolved_cross_import"
+  ],
+  "agents": [
+    { "name": "baseline", "type": "baseline", "maxSteps": 10 },
+    { "name": "zca-naive", "type": "zca", "projector": "naive", "maxSteps": 5 },
+    { "name": "zca-adaptive", "type": "zca", "projector": "adaptive", "maxSteps": 5 }
+  ],
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "temperature": 0
+  }
+}

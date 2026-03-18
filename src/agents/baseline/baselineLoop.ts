@@ -1,5 +1,6 @@
 import type { ModelClient, Message } from "../../model/types.js";
 import type { ToolRegistry } from "../../runtime/tools/index.js";
+import type { ToolResult } from "../../runtime/tools/types.js";
 import { Logger } from "../../runtime/execution/logger.js";
 import { runTests } from "../../runtime/tools/runTests.js";
 import type { BaselineRunResult } from "./BaselineAgent.js";
@@ -7,47 +8,71 @@ import { BASELINE_SYSTEM_PROMPT } from "./baselinePrompt.js";
 
 const MAX_READ_TURNS_PER_STEP = 3;
 
+type VerifyFn = (args: Record<string, unknown>) => Promise<ToolResult>;
+
 interface LoopContext {
   model: ModelClient;
   registry: ToolRegistry;
   maxSteps: number;
   taskPath: string;
   logger: Logger;
+  verify?: VerifyFn;
+  systemPrompt?: string;
+  initialFailureMessage?: (output: string) => string;
+  retryFailureMessage?: (output: string) => string;
 }
 
 export async function runBaselineLoop(
   ctx: LoopContext,
 ): Promise<BaselineRunResult> {
   const { model, registry, maxSteps, taskPath, logger } = ctx;
+  const verify = ctx.verify ?? ((args) => runTests(args));
+  const systemPrompt = ctx.systemPrompt ?? BASELINE_SYSTEM_PROMPT;
+
+  const formatInitialFailure = ctx.initialFailureMessage ?? ((output: string) =>
+    [
+      "The test suite is failing. Here is the output:",
+      "",
+      "```",
+      output,
+      "```",
+      "",
+      "Fix the failing tests. Do not modify test files.",
+    ].join("\n")
+  );
+
+  const formatRetryFailure = ctx.retryFailureMessage ?? ((output: string) =>
+    [
+      "Tests still failing:",
+      "",
+      "```",
+      output,
+      "```",
+      "",
+      "Continue fixing.",
+    ].join("\n")
+  );
 
   const history: Message[] = [
-    { role: "system", content: BASELINE_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
   ];
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  logger.info("Running initial test suite...");
-  const initialResult = await runTests({ taskPath });
+  logger.info("Running initial verification...");
+  const initialResult = await verify({ taskPath });
 
   if (initialResult.success) {
-    logger.success("All tests already pass. Nothing to do.");
+    logger.success("All checks pass. Nothing to do.");
     return { success: true, steps: 0, history, totalInputTokens, totalOutputTokens };
   }
 
-  logger.warn("Tests failing. Starting agent loop.");
+  logger.warn("Verification failing. Starting agent loop.");
 
   history.push({
     role: "user",
-    content: [
-      "The test suite is failing. Here is the output:",
-      "",
-      "```",
-      initialResult.output,
-      "```",
-      "",
-      "Fix the failing tests. Do not modify test files.",
-    ].join("\n"),
+    content: formatInitialFailure(initialResult.output),
   });
 
   let lastStep = 0;
@@ -124,25 +149,17 @@ export async function runBaselineLoop(
       continue;
     }
 
-    logger.info("Re-running tests...");
-    const testResult = await runTests({ taskPath });
+    logger.info("Re-running verification...");
+    const testResult = await verify({ taskPath });
 
     if (testResult.success) {
-      logger.success(`All tests pass after ${step} step(s).`);
+      logger.success(`All checks pass after ${step} step(s).`);
       return { success: true, steps: step, history, totalInputTokens, totalOutputTokens };
     }
 
     history.push({
       role: "user",
-      content: [
-        "Tests still failing:",
-        "",
-        "```",
-        testResult.output,
-        "```",
-        "",
-        "Continue fixing.",
-      ].join("\n"),
+      content: formatRetryFailure(testResult.output),
     });
   }
 
