@@ -70,19 +70,28 @@ Extends the naive projector with a bounded exploration budget:
 
 This keeps the agent slice-isolated while recovering coverage on multi-file and ambiguous-source tasks.
 
-## Initial results (Claude Sonnet 4)
+## Results (Claude Sonnet 4)
 
 | Task | Baseline | ZCA Naive | ZCA Adaptive |
 |---|---|---|---|
-| parser_bug (L1/O1) | FAIL — 10 steps, 27s | **PASS** — 1 step, 8s | **PASS** — 1 step, 8s |
-| range_check_bug (L2/O1) | FAIL — 10 steps, 26s | **PASS** — 1 step, 6s | **PASS** — 1 step, 6s |
-| slug_conflict_bug (L3/O2) | FAIL — 10 steps, 32s | **PASS** — 2 steps, 15s | **PASS** — 1 step, 8s |
-| config_lookup_bug (L2/O3) | FAIL — 10 steps, 33s | FAIL — 5 steps, 50s | **PASS** — 1 step, 8s |
-| **Pass rate** | **0/4** | **3/4** | **4/4** |
+| parser_bug (L1/O1) | FAIL — 10 steps, 69s, 270k tok | **PASS** — 1 step, 10s, 2.2k tok | **PASS** — 1 step, 8s, 2.5k tok |
+| range_check_bug (L2/O1) | FAIL — 10 steps, 181s, 1.5M tok | **PASS** — 1 step, 8s, 1.8k tok | **PASS** — 1 step, 7s, 2.2k tok |
+| slug_conflict_bug (L3/O2) | FAIL — 10 steps, 83s, 1.4M tok | **PASS** — 2 steps, 18s, 4.3k tok | **PASS** — 2 steps, 13s, 4.4k tok |
+| config_lookup_bug (L2/O3) | FAIL — 10 steps, 75s, 245k tok | FAIL — 5 steps, 48s, 10.4k tok | **PASS** — 1 step, 7s, 2.2k tok |
+| **Pass rate** | **0 / 4** | **3 / 4** | **4 / 4** |
+| **Total tokens** | **3.4M in / 8.5k out** | **13.6k in / 5.2k out** | **9.1k in / 2.3k out** |
 
-**Key finding**: naive ZCA fails on `config_lookup_bug` because the projector serves the wrong file (`featureCheck.ts` has no bug — the typo is in `configStore.ts`). The adaptive projector follows the import chain and includes `configStore.ts`, fixing it in one step.
+### Key findings
 
-**Note**: The baseline loop currently has a structural issue — it re-runs tests after every tool call (including reads) and never reaches `editFile` within its step budget. This needs improvement for a fair efficiency comparison. The ZCA results are the validated finding.
+**Token efficiency**: ZCA Adaptive uses **380x fewer input tokens** than baseline across all tasks. Even ZCA Naive (254x fewer) dramatically outperforms context accumulation on token budget.
+
+**Time**: The baseline takes 408s total across 4 tasks. ZCA Adaptive takes 35s — an **11.7x speedup**.
+
+**Baseline failure mode**: The baseline model makes 30 model calls (10 steps × 3 read-only sub-turns) searching and reading files but never commits to an edit. It reads `src/parseAmount.ts` correctly on step 3 but continues searching for 7 more steps. The accumulated history becomes the obstacle — the model gets stuck in an explore loop rather than transitioning to fixing. On `range_check_bug`, it finally attempts an edit at step 10 (the last step) but runs out of budget.
+
+**Projection quality determines the boundary**: Naive ZCA fails on `config_lookup_bug` because the projector serves the wrong file — `featureCheck.ts` has no bug, the typo is in `configStore.ts`. The adaptive projector follows the import chain, includes `configStore.ts`, and fixes it in one step. This is the benchmark's core design point: **projector quality, not model quality, determines ZCA's ceiling**.
+
+**Stateless re-projection enables recovery**: On `slug_conflict_bug` (two-file task), both ZCA variants needed 2 steps. The first edit fixed one file, the fresh re-projection on step 2 revealed the remaining issue. No conversation history was needed — re-observing the environment was sufficient.
 
 ## The thesis
 
@@ -144,6 +153,7 @@ slice-agent-bench/
 
 - 4 tasks is a small benchmark — demonstrates the pattern but doesn't prove generality
 - L4 (multi-file architectural) and O4 (opaque failure) tasks are not yet represented
-- The baseline agent needs loop improvements before efficiency comparisons are fair
-- Token usage, irrelevant file edits, and oscillation metrics are not yet captured
+- The baseline agent never successfully edits within its step budget — a smarter baseline (e.g. multi-tool-call per turn, or an explicit "explore then edit" phase) would make the comparison stronger
+- Irrelevant file edits and oscillation metrics are not yet captured
 - The adaptive projector is simple (import-following + grep) — a production projector would need static analysis or call graph tracing
+- Only tested with Claude Sonnet 4 — results may vary across model families
