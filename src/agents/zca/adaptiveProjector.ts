@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import type { ProjectedSlice, SliceFile } from "./projectFailureSlice.js";
@@ -22,6 +23,14 @@ export async function projectAdaptiveSlice(
   const primaryRelative = options?.entryFile ?? inferSourceFile(failureOutput);
   logger?.verbose("Adaptive projector: primary file", primaryRelative);
   const primaryPath = resolve(join(taskPath, primaryRelative));
+
+  if (!existsSync(primaryPath)) {
+    throw new Error(
+      `Projector entry file not found: ${primaryRelative} (resolved: ${primaryPath}). ` +
+      `This usually means the failure output could not be mapped to a source file.`,
+    );
+  }
+
   const primarySource = await readFile(primaryPath, "utf-8");
 
   const candidateRelPaths = new Set<string>();

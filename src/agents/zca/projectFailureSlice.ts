@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Logger } from "../../runtime/execution/logger.js";
 
@@ -22,6 +23,14 @@ export async function projectFailureSlice(
   const relativePath = entryFile ?? inferSourceFile(failureOutput);
   logger?.verbose("Naive projector: entry file", relativePath);
   const filePath = resolve(join(taskPath, relativePath));
+
+  if (!existsSync(filePath)) {
+    throw new Error(
+      `Projector entry file not found: ${relativePath} (resolved: ${filePath}). ` +
+      `This usually means the failure output could not be mapped to a source file.`,
+    );
+  }
+
   const sourceCode = await readFile(filePath, "utf-8");
 
   return {

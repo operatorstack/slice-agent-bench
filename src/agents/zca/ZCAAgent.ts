@@ -88,13 +88,15 @@ export class ZCAAgent {
       return async (taskPath, failureOutput) => {
         const anchors = parseTscOutput(failureOutput);
         const primary = selectPrimaryAnchor(anchors);
-        const entryFile = primary?.file;
+        const entryFile = primary?.file ?? anchors[0]?.file;
 
         log.verbose(
           "Anchor selection",
           primary
             ? `${primary.file}:${primary.line} ${primary.code} — ${primary.message}`
-            : "(no supported anchor found)",
+            : anchors[0]
+              ? `(no supported code — falling back to ${anchors[0].file}:${anchors[0].line} ${anchors[0].code})`
+              : "(no parseable anchor in tsc output)",
         );
 
         return mode === "adaptive"

@@ -1,0 +1,180 @@
+{
+  "results": [
+    {
+      "task": "wrong_return_type",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 88877,
+      "inputTokens": 263489,
+      "outputTokens": 2567
+    },
+    {
+      "task": "wrong_return_type",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5985,
+      "inputTokens": 848,
+      "outputTokens": 346
+    },
+    {
+      "task": "wrong_return_type",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 6801,
+      "inputTokens": 967,
+      "outputTokens": 349
+    },
+    {
+      "task": "missing_property",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 89913,
+      "inputTokens": 501765,
+      "outputTokens": 2443
+    },
+    {
+      "task": "missing_property",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 6961,
+      "inputTokens": 813,
+      "outputTokens": 391
+    },
+    {
+      "task": "missing_property",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 6671,
+      "inputTokens": 926,
+      "outputTokens": 302
+    },
+    {
+      "task": "undefined_name",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 94430,
+      "inputTokens": 364989,
+      "outputTokens": 2001
+    },
+    {
+      "task": "undefined_name",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 6626,
+      "inputTokens": 817,
+      "outputTokens": 368
+    },
+    {
+      "task": "undefined_name",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 9820,
+      "inputTokens": 925,
+      "outputTokens": 382
+    },
+    {
+      "task": "cross_file_return_type",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 133864,
+      "inputTokens": 1218811,
+      "outputTokens": 2370
+    },
+    {
+      "task": "cross_file_return_type",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 7768,
+      "inputTokens": 846,
+      "outputTokens": 325
+    },
+    {
+      "task": "cross_file_return_type",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5989,
+      "inputTokens": 1086,
+      "outputTokens": 302
+    },
+    {
+      "task": "wrong_method_call",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 103518,
+      "inputTokens": 1415935,
+      "outputTokens": 2154
+    },
+    {
+      "task": "wrong_method_call",
+      "agent": "zca-naive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5939,
+      "inputTokens": 817,
+      "outputTokens": 310
+    },
+    {
+      "task": "wrong_method_call",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5551,
+      "inputTokens": 1049,
+      "outputTokens": 313
+    },
+    {
+      "task": "unresolved_cross_import",
+      "agent": "baseline",
+      "success": false,
+      "steps": 10,
+      "durationMs": 72688,
+      "inputTokens": 168564,
+      "outputTokens": 2189
+    },
+    {
+      "task": "unresolved_cross_import",
+      "agent": "zca-naive",
+      "success": false,
+      "steps": 5,
+      "durationMs": 41774,
+      "inputTokens": 4298,
+      "outputTokens": 2280
+    },
+    {
+      "task": "unresolved_cross_import",
+      "agent": "zca-adaptive",
+      "success": true,
+      "steps": 1,
+      "durationMs": 5642,
+      "inputTokens": 977,
+      "outputTokens": 369
+    }
+  ],
+  "matrix": [],
+  "tasks": [
+    "wrong_return_type",
+    "missing_property",
+    "undefined_name",
+    "cross_file_return_type",
+    "wrong_method_call",
+    "unresolved_cross_import"
+  ],
+  "agents": [
+    "baseline",
+    "zca-naive",
+    "zca-adaptive"
+  ]
+}

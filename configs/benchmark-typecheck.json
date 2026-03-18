@@ -4,7 +4,10 @@
   "tasks": [
     "wrong_return_type",
     "missing_property",
-    "undefined_name"
+    "undefined_name",
+    "cross_file_return_type",
+    "wrong_method_call",
+    "unresolved_cross_import"
   ],
   "agents": [
     { "name": "baseline", "type": "baseline", "maxSteps": 10 },
