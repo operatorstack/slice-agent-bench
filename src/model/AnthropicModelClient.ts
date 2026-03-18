@@ -76,7 +76,12 @@ export class AnthropicModelClient implements ModelClient {
           `tokens=${response.usage.input_tokens}in/${response.usage.output_tokens}out`,
       );
 
-      return parseContentBlocks(response.content);
+      const result = parseContentBlocks(response.content);
+      result.tokenUsage = {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      };
+      return result;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`API call failed: ${msg}`);

@@ -13,9 +13,15 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface ModelResponse {
   content: string;
   toolCalls: ToolCall[];
+  tokenUsage?: TokenUsage;
 }
 
 export interface ModelClient {

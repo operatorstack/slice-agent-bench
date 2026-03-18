@@ -15,6 +15,8 @@ export interface BaselineRunResult {
   success: boolean;
   steps: number;
   history: Message[];
+  totalInputTokens: number;
+  totalOutputTokens: number;
 }
 
 export class BaselineAgent {

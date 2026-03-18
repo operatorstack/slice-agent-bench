@@ -5,6 +5,8 @@ import { runTests } from "../../runtime/tools/runTests.js";
 import type { BaselineRunResult } from "./BaselineAgent.js";
 import { BASELINE_SYSTEM_PROMPT } from "./baselinePrompt.js";
 
+const MAX_READ_TURNS_PER_STEP = 3;
+
 interface LoopContext {
   model: ModelClient;
   registry: ToolRegistry;
@@ -22,12 +24,15 @@ export async function runBaselineLoop(
     { role: "system", content: BASELINE_SYSTEM_PROMPT },
   ];
 
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
   logger.info("Running initial test suite...");
   const initialResult = await runTests({ taskPath });
 
   if (initialResult.success) {
     logger.success("All tests already pass. Nothing to do.");
-    return { success: true, steps: 0, history };
+    return { success: true, steps: 0, history, totalInputTokens, totalOutputTokens };
   }
 
   logger.warn("Tests failing. Starting agent loop.");
@@ -51,38 +56,72 @@ export async function runBaselineLoop(
     lastStep = step;
     logger.step(step, maxSteps);
 
-    const response = await model.chat(history, registry.definitions);
-    history.push({ role: "assistant", content: response.content });
+    let madeEdit = false;
+    let readTurns = 0;
 
-    if (response.toolCalls.length === 0) {
-      logger.info("Model produced no tool calls. Ending loop.");
-      break;
-    }
+    while (!madeEdit && readTurns < MAX_READ_TURNS_PER_STEP) {
+      const response = await model.chat(history, registry.definitions);
+      history.push({ role: "assistant", content: response.content });
 
-    for (const toolCall of response.toolCalls) {
-      const handler = registry.handlers.get(toolCall.name);
+      if (response.tokenUsage) {
+        totalInputTokens += response.tokenUsage.inputTokens;
+        totalOutputTokens += response.tokenUsage.outputTokens;
+      }
 
-      if (!handler) {
-        const msg = `Unknown tool: ${toolCall.name}`;
-        logger.warn(msg);
+      if (response.toolCalls.length === 0) {
+        logger.info("Model produced no tool calls. Ending loop.");
+        return {
+          success: false,
+          steps: lastStep,
+          history,
+          totalInputTokens,
+          totalOutputTokens,
+        };
+      }
+
+      for (const toolCall of response.toolCalls) {
+        const handler = registry.handlers.get(toolCall.name);
+
+        if (!handler) {
+          const msg = `Unknown tool: ${toolCall.name}`;
+          logger.warn(msg);
+          history.push({
+            role: "tool",
+            content: msg,
+            toolCallID: toolCall.id,
+            name: toolCall.name,
+          });
+          continue;
+        }
+
+        logger.tool(toolCall.name, toolCall.arguments);
+        const result = await handler(toolCall.arguments);
+
         history.push({
           role: "tool",
-          content: msg,
+          content: result.output,
           toolCallID: toolCall.id,
           name: toolCall.name,
         });
-        continue;
+
+        if (toolCall.name === "editFile") {
+          madeEdit = true;
+        }
       }
 
-      logger.tool(toolCall.name, toolCall.arguments);
-      const result = await handler(toolCall.arguments);
+      if (!madeEdit) {
+        readTurns++;
+        logger.info(
+          `Read-only turn ${readTurns}/${MAX_READ_TURNS_PER_STEP} — no edit yet, continuing.`,
+        );
+      }
+    }
 
-      history.push({
-        role: "tool",
-        content: result.output,
-        toolCallID: toolCall.id,
-        name: toolCall.name,
-      });
+    if (!madeEdit) {
+      logger.warn(
+        `Exhausted ${MAX_READ_TURNS_PER_STEP} read-only turns without editing. Moving to next step.`,
+      );
+      continue;
     }
 
     logger.info("Re-running tests...");
@@ -90,7 +129,7 @@ export async function runBaselineLoop(
 
     if (testResult.success) {
       logger.success(`All tests pass after ${step} step(s).`);
-      return { success: true, steps: step, history };
+      return { success: true, steps: step, history, totalInputTokens, totalOutputTokens };
     }
 
     history.push({
@@ -110,5 +149,5 @@ export async function runBaselineLoop(
   logger.error(
     `Stopped after ${lastStep} step(s) without fixing all tests.`,
   );
-  return { success: false, steps: lastStep, history };
+  return { success: false, steps: lastStep, history, totalInputTokens, totalOutputTokens };
 }

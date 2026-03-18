@@ -6,7 +6,13 @@ import { editFile } from "../../runtime/tools/editFile.js";
 import { canonicalizeState } from "./canonicalizeState.js";
 import { ZCA_SYSTEM_PROMPT, buildSliceUserMessage } from "./zcaPrompt.js";
 import type { ProjectedSlice } from "./projectFailureSlice.js";
-import type { ZCARunResult } from "./ZCAAgent.js";
+
+export interface ZCARunResult {
+  success: boolean;
+  steps: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}
 
 const EDIT_FILE_TOOL: ToolDefinition = {
   name: "editFile",
@@ -40,12 +46,15 @@ interface LoopContext {
 export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
   const { createModel, project, maxSteps, taskPath, logger } = ctx;
 
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
   logger.info("Running initial test suite...");
   const initialResult = await runTests({ taskPath });
 
   if (initialResult.success) {
     logger.success("All tests already pass. Nothing to do.");
-    return { success: true, steps: 0 };
+    return { success: true, steps: 0, totalInputTokens, totalOutputTokens };
   }
 
   logger.warn("Tests failing. Starting ZCA loop.");
@@ -73,6 +82,11 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
     logger.info("Sending slice to model...");
     const response = await model.chat(messages, [EDIT_FILE_TOOL]);
 
+    if (response.tokenUsage) {
+      totalInputTokens += response.tokenUsage.inputTokens;
+      totalOutputTokens += response.tokenUsage.outputTokens;
+    }
+
     let applied = false;
 
     for (const toolCall of response.toolCalls) {
@@ -95,7 +109,7 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
 
     if (testResult.success) {
       logger.success(`All tests pass after ${step} step(s).`);
-      return { success: true, steps: step };
+      return { success: true, steps: step, totalInputTokens, totalOutputTokens };
     }
 
     latestTestOutput = testResult.output;
@@ -105,5 +119,5 @@ export async function runZCALoop(ctx: LoopContext): Promise<ZCARunResult> {
   logger.error(
     `Stopped after ${lastStep} step(s) without fixing all tests.`,
   );
-  return { success: false, steps: lastStep };
+  return { success: false, steps: lastStep, totalInputTokens, totalOutputTokens };
 }

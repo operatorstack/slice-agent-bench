@@ -4,6 +4,8 @@ export interface BenchmarkResult {
   success: boolean;
   steps: number;
   durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface TaskClassification {
@@ -24,6 +26,8 @@ export interface MatrixCell {
   success: boolean;
   steps: number;
   durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export const TASK_CLASSIFICATIONS: Record<string, TaskClassification> = {

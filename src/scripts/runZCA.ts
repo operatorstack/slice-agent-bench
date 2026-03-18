@@ -98,6 +98,7 @@ async function main(): Promise<void> {
     console.log();
     logger.info(`Result: ${result.success ? "PASS" : "FAIL"}`);
     logger.info(`Steps: ${result.steps}`);
+    logger.info(`Tokens: ${result.totalInputTokens} input / ${result.totalOutputTokens} output`);
 
     process.exit(result.success ? 0 : 1);
   } finally {
