@@ -3,6 +3,9 @@ results/*.json
 results/*.csv
 results/*.log
 
+# Benchmark sandbox copies (created per run, cleaned up after)
+.bench-runs/
+
 # Python
 __pycache__/
 *.pyc

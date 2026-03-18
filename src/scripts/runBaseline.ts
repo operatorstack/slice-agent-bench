@@ -5,6 +5,7 @@ import { AnthropicModelClient } from "../model/AnthropicModelClient.js";
 import { StubModelClient } from "../model/StubModelClient.js";
 import type { ModelClient } from "../model/types.js";
 import { Logger } from "../runtime/execution/logger.js";
+import { createTaskSandbox } from "../runtime/execution/sandbox.js";
 
 interface BaselineConfig {
   maxSteps: number;
@@ -69,21 +70,29 @@ async function main(): Promise<void> {
   const config = parseConfig(JSON.parse(raw));
   const model = createModelClient(config);
 
-  const agent = new BaselineAgent({
-    taskName,
-    maxSteps: config.maxSteps,
-    model,
-  });
+  const sandbox = createTaskSandbox(taskName, "baseline");
+  logger.info(`Sandboxed task at: ${sandbox.workPath}`);
 
-  logger.info(`Starting baseline agent on task: ${taskName}`);
-  const result = await agent.run();
+  try {
+    const agent = new BaselineAgent({
+      taskName,
+      maxSteps: config.maxSteps,
+      model,
+      taskPath: sandbox.workPath,
+    });
 
-  console.log();
-  logger.info(`Result: ${result.success ? "PASS" : "FAIL"}`);
-  logger.info(`Steps: ${result.steps}`);
-  logger.info(`History: ${result.history.length} messages`);
+    logger.info(`Starting baseline agent on task: ${taskName}`);
+    const result = await agent.run();
 
-  process.exit(result.success ? 0 : 1);
+    console.log();
+    logger.info(`Result: ${result.success ? "PASS" : "FAIL"}`);
+    logger.info(`Steps: ${result.steps}`);
+    logger.info(`History: ${result.history.length} messages`);
+
+    process.exit(result.success ? 0 : 1);
+  } finally {
+    sandbox.cleanup();
+  }
 }
 
 main().catch((error) => {

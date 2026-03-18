@@ -6,6 +6,7 @@ import { AnthropicModelClient } from "../model/AnthropicModelClient.js";
 import { StubModelClient } from "../model/StubModelClient.js";
 import type { ModelClient } from "../model/types.js";
 import { Logger } from "../runtime/execution/logger.js";
+import { createTaskSandbox } from "../runtime/execution/sandbox.js";
 
 interface ZCAConfig {
   maxSteps: number;
@@ -79,21 +80,29 @@ async function main(): Promise<void> {
 
   const projector = (config.projector === "adaptive" ? "adaptive" : "naive") satisfies ProjectorMode;
 
-  const agent = new ZCAAgent({
-    taskName,
-    maxSteps: config.maxSteps,
-    createModel,
-    projector,
-  });
+  const sandbox = createTaskSandbox(taskName, `zca-${projector}`);
+  logger.info(`Sandboxed task at: ${sandbox.workPath}`);
 
-  logger.info(`Starting ZCA agent on task: ${taskName}`);
-  const result = await agent.run();
+  try {
+    const agent = new ZCAAgent({
+      taskName,
+      maxSteps: config.maxSteps,
+      createModel,
+      projector,
+      taskPath: sandbox.workPath,
+    });
 
-  console.log();
-  logger.info(`Result: ${result.success ? "PASS" : "FAIL"}`);
-  logger.info(`Steps: ${result.steps}`);
+    logger.info(`Starting ZCA agent on task: ${taskName}`);
+    const result = await agent.run();
 
-  process.exit(result.success ? 0 : 1);
+    console.log();
+    logger.info(`Result: ${result.success ? "PASS" : "FAIL"}`);
+    logger.info(`Steps: ${result.steps}`);
+
+    process.exit(result.success ? 0 : 1);
+  } finally {
+    sandbox.cleanup();
+  }
 }
 
 main().catch((error) => {

@@ -6,6 +6,7 @@ import type { ProjectorMode } from "../agents/zca/ZCAAgent.js";
 import { createModelClient, createModelFactory } from "../model/factory.js";
 import type { ModelConfig } from "../model/factory.js";
 import { Logger } from "../runtime/execution/logger.js";
+import { createTaskSandbox } from "../runtime/execution/sandbox.js";
 import type { BenchmarkResult, BenchmarkSummary } from "../analysis/metrics/types.js";
 import { TASK_CLASSIFICATIONS } from "../analysis/metrics/types.js";
 
@@ -67,14 +68,37 @@ async function runOneAgent(
   modelConfig: ModelConfig,
   logger: Logger,
 ): Promise<BenchmarkResult> {
+  const sandbox = createTaskSandbox(taskName, agentSpec.name);
+  logger.info(`Sandboxed task at: ${sandbox.workPath}`);
+
   const startMs = Date.now();
 
-  if (agentSpec.type === "baseline") {
-    const model = createModelClient(modelConfig);
-    const agent = new BaselineAgent({
+  try {
+    if (agentSpec.type === "baseline") {
+      const model = createModelClient(modelConfig);
+      const agent = new BaselineAgent({
+        taskName,
+        maxSteps: agentSpec.maxSteps,
+        model,
+        taskPath: sandbox.workPath,
+      });
+      const result = await agent.run();
+      return {
+        task: taskName,
+        agent: agentSpec.name,
+        success: result.success,
+        steps: result.steps,
+        durationMs: Date.now() - startMs,
+      };
+    }
+
+    const factory = createModelFactory(modelConfig);
+    const agent = new ZCAAgent({
       taskName,
       maxSteps: agentSpec.maxSteps,
-      model,
+      createModel: factory,
+      projector: agentSpec.projector ?? "naive",
+      taskPath: sandbox.workPath,
     });
     const result = await agent.run();
     return {
@@ -84,23 +108,9 @@ async function runOneAgent(
       steps: result.steps,
       durationMs: Date.now() - startMs,
     };
+  } finally {
+    sandbox.cleanup();
   }
-
-  const factory = createModelFactory(modelConfig);
-  const agent = new ZCAAgent({
-    taskName,
-    maxSteps: agentSpec.maxSteps,
-    createModel: factory,
-    projector: agentSpec.projector ?? "naive",
-  });
-  const result = await agent.run();
-  return {
-    task: taskName,
-    agent: agentSpec.name,
-    success: result.success,
-    steps: result.steps,
-    durationMs: Date.now() - startMs,
-  };
 }
 
 function printMatrix(summary: BenchmarkSummary): void {

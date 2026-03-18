@@ -15,7 +15,7 @@ const DEFAULT_CONFIG: AppConfig = {
       description: "Advanced analytics dashboard",
     },
     customBranding: {
-      enabledTiers: ["pro", "enterprise"],
+      enabledTiers: ["pro", "enterpise"],
       description: "Custom logo and colors",
     },
   },

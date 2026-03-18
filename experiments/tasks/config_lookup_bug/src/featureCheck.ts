@@ -9,15 +9,12 @@ export function isFeatureEnabled(
   if (!feature) {
     return false;
   }
-  if (!feature.enabledTiers) {
-    return false;
-  }
   return feature.enabledTiers.includes(userTier);
 }
 
 export function getEnabledFeatures(userTier: string): string[] {
   const config = getConfig();
   return Object.entries(config.features)
-    .filter(([, feature]) => feature.enabledTiers && feature.enabledTiers.includes(userTier))
+    .filter(([, feature]) => feature.enabledTiers.includes(userTier))
     .map(([featureID]) => featureID);
 }

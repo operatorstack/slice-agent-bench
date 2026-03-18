@@ -13,6 +13,7 @@ export interface ZCAAgentConfig {
   maxSteps: number;
   createModel: () => ModelClient;
   projector?: ProjectorMode;
+  taskPath?: string;
 }
 
 export interface ZCARunResult {
@@ -28,7 +29,7 @@ export class ZCAAgent {
 
   constructor(config: ZCAAgentConfig) {
     this.config = config;
-    this.taskPath = resolveTaskPath(config.taskName);
+    this.taskPath = config.taskPath ?? resolveTaskPath(config.taskName);
     this.logger = new Logger("zca");
 
     const mode = config.projector ?? "naive";

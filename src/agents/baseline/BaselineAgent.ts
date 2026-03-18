@@ -8,6 +8,7 @@ export interface BaselineAgentConfig {
   taskName: string;
   maxSteps: number;
   model: ModelClient;
+  taskPath?: string;
 }
 
 export interface BaselineRunResult {
@@ -23,7 +24,7 @@ export class BaselineAgent {
 
   constructor(config: BaselineAgentConfig) {
     this.config = config;
-    this.taskPath = resolveTaskPath(config.taskName);
+    this.taskPath = config.taskPath ?? resolveTaskPath(config.taskName);
     this.logger = new Logger("baseline");
   }
 
