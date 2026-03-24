@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "task": "parser_bug",
+      "agent": "mini-swe-agent",
+      "success": true,
+      "steps": 0,
+      "durationMs": 120460,
+      "inputTokens": 0,
+      "outputTokens": 0
+    }
+  ],
+  "matrix": [],
+  "tasks": [
+    "parser_bug"
+  ],
+  "agents": [
+    "mini-swe-agent"
+  ]
+}

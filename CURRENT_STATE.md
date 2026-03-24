@@ -3,28 +3,54 @@
 ## Goal
 Benchmark whether slice-isolated coding agents generalize from test-driven repair to typecheck-driven repair using the same projection/edit loop.
 
-## Active Slice
-Typecheck benchmark surface is implemented and wired end-to-end. Three plumbing fixtures pass `tsc --noEmit` failure through existing projectors, and results save separately. Awaiting first live benchmark run.
+## Status
+Typecheck benchmark is implemented, run, and producing clean results across 6 tasks (3 L1 + 3 L2). Results are recorded in `results/benchmark-typecheck.json`.
 
-## Inputs
-- `tsc --noEmit` output from task directory
-- benchmark config at `configs/benchmark-typecheck.json`
+mini-SWE-agent integration is wired end-to-end: adapter, runner, config, and CLI flags verified against v2.2.7. Ready for first benchmark run with `configs/benchmark-with-swe-agent.json`.
 
-## Expected Output
-- parsed `TypeErrorAnchor` with file/line/column/code/message
-- deterministic primary anchor selection
-- separate typecheck benchmark results at `results/benchmark-typecheck.json`
+## Benchmark Tasks
+
+### L1 (single-file, anchor file alone is sufficient)
+- `wrong_return_type` (TS2322) — all ZCA agents pass in 1 step
+- `missing_property` (TS2339) — all ZCA agents pass in 1 step
+- `undefined_name` (TS2304) — all ZCA agents pass in 1 step
+
+### L2 (cross-file, fix requires context beyond the anchor file)
+- `cross_file_return_type` (TS2322) — both ZCA agents pass; naive may be guessing
+- `wrong_method_call` (TS2339) — both ZCA agents pass; naive may be guessing
+- `unresolved_cross_import` (TS2304) — **clean naive/adaptive split**: naive FAIL, adaptive PASS
+
+## Latest Results (Sonnet 4)
+
+| Agent | Pass rate | Input tokens |
+|---|---|---|
+| Baseline | 0/6 | 3.9M in / 13.7k out |
+| ZCA Naive | 5/6 | 8.4k in / 4.0k out |
+| ZCA Adaptive | 6/6 | 5.9k in / 2.0k out |
+
+## Interpretation
+- Projection vs baseline is strongly supported on the typecheck surface
+- Typecheck generalization is strongly supported — same loops, same projectors, new signal
+- Adaptive vs naive is cleanly supported by `unresolved_cross_import`
+- Two of three L2 tasks are soft — naive passes by local guessing, not structural reasoning
+
+## Bug Fixed This Iteration
+The naive projector crashed with ENOENT on re-projection when `selectPrimaryAnchor` returned null (unsupported error code after model edit). The fallback path hit `inferSourceFile`, which is test-specific and defaults to `src/index.ts`. Fixed by:
+1. Adding anchor fallback: `primary?.file ?? anchors[0]?.file` in `ZCAAgent.ts`
+2. Adding `existsSync` guards in both `projectFailureSlice.ts` and `adaptiveProjector.ts`
 
 ## In Scope
 - `src/runtime/tools/runTypeCheck.ts` — signal execution + anchor parsing + selection
-- `src/agents/zca/ZCAAgent.ts` — signal routing, typecheck projector construction
+- `src/agents/zca/ZCAAgent.ts` — signal routing, typecheck projector construction, anchor fallback
 - `src/agents/baseline/BaselineAgent.ts` — signal routing for baseline
 - `src/agents/zca/zcaLoop.ts` — parameterized verify/prompt (shared by both signals)
 - `src/agents/baseline/baselineLoop.ts` — parameterized verify/prompt (shared by both signals)
-- `src/agents/zca/projectFailureSlice.ts` — entryFile override (no new projector)
-- `src/agents/zca/adaptiveProjector.ts` — entryFile override (no new projector)
-- `experiments/tasks-typecheck/` — 3 plumbing fixtures
+- `src/agents/zca/projectFailureSlice.ts` — entryFile override + existsSync guard
+- `src/agents/zca/adaptiveProjector.ts` — entryFile override + existsSync guard
+- `src/agents/sweAgent/MiniSWEAgentAdapter.ts` — subprocess adapter for mini-SWE-agent CLI
+- `experiments/tasks-typecheck/` — 6 fixtures (3 L1 + 3 L2)
 - `configs/benchmark-typecheck.json` — separate config
+- `configs/benchmark-with-swe-agent.json` — test benchmark with mini-SWE-agent baseline
 
 ## Out of Scope
 - generic plugin/signal framework
@@ -38,52 +64,20 @@ Typecheck benchmark surface is implemented and wired end-to-end. Three plumbing 
 - supported error codes: TS2322, TS2339, TS2304 only
 - anchor selection ignores node_modules, dist, .d.ts files
 - one primary anchor per iteration (deterministic: sorted by file/line/code, first match)
+- anchor fallback to first raw anchor when supported-code filter is empty
 - projectors reused directly via entryFile override — no separate typecheck projector files
 - loops reused directly via verify/prompt parameterization — no separate loop files
-- 3 fixture tasks are plumbing-quality, not published benchmark coverage
 
-## Unknown Constraints
-- whether Sonnet/Haiku can reliably fix type errors with the current prompt framing
-- whether adaptive projector's import-following helps for type errors (may already be single-file)
-- whether 3 tasks are enough to expose architectural differences between agents
-- whether `tsc --noEmit` startup time affects duration metrics meaningfully
+## Resolved Questions
+- **Will the baseline agent handle tsc errors?** No — same exploration-without-editing pattern as tests.
+- **Does adaptive projector's import-following help for type errors?** Yes — cleanly demonstrated on `unresolved_cross_import`.
+- **Are 3 tasks enough to expose differences?** No — 3 L1 tasks showed no naive/adaptive split. After adding 3 L2 tasks, one (`unresolved_cross_import`) cleanly separates them.
+- **Is `tsc --noEmit` startup time a problem?** No — each verification takes ~1s, negligible vs model latency.
 
-## Verification
-- Command: `npm run benchmark -- configs/benchmark-typecheck.json`
-- Success condition: all 3 tasks run for all 3 agents, results save to `results/benchmark-typecheck.json`
-
-## Current Owners
-- signal execution + anchor parsing → `src/runtime/tools/runTypeCheck.ts`
-- anchor → projector routing → `src/agents/zca/ZCAAgent.ts`
-- naive projection → `src/agents/zca/projectFailureSlice.ts`
-- adaptive projection → `src/agents/zca/adaptiveProjector.ts`
-- ZCA loop → `src/agents/zca/zcaLoop.ts`
-- baseline loop → `src/agents/baseline/baselineLoop.ts`
-- benchmark orchestration → `src/scripts/runBenchmark.ts`
-- task sandboxing → `src/runtime/execution/sandbox.ts`
-- result types → `src/analysis/metrics/types.ts`
-
-## Files Changed (this iteration)
-- **new:** `src/runtime/tools/runTypeCheck.ts`
-- **new:** `configs/benchmark-typecheck.json`
-- **new:** `experiments/tasks-typecheck/wrong_return_type/` (TS2322)
-- **new:** `experiments/tasks-typecheck/missing_property/` (TS2339)
-- **new:** `experiments/tasks-typecheck/undefined_name/` (TS2304)
-- **modified:** `src/agents/zca/ZCAAgent.ts` — signal routing, typecheck projector builder
-- **modified:** `src/agents/zca/zcaLoop.ts` — optional verify/systemPrompt/goal/failureLabel
-- **modified:** `src/agents/zca/projectFailureSlice.ts` — optional entryFile parameter
-- **modified:** `src/agents/zca/adaptiveProjector.ts` — options object with entryFile
-- **modified:** `src/agents/zca/canonicalizeState.ts` — optional goal/failureLabel
-- **modified:** `src/agents/zca/zcaPrompt.ts` — uses failureLabel from state
-- **modified:** `src/agents/baseline/BaselineAgent.ts` — signal routing
-- **modified:** `src/agents/baseline/baselineLoop.ts` — optional verify/prompt/messages
-- **modified:** `src/runtime/tools/index.ts` — signal-aware tool registry
-- **modified:** `src/runtime/execution/taskPaths.ts` — optional tasksDir
-- **modified:** `src/runtime/execution/sandbox.ts` — propagate tasksDir
-- **modified:** `src/scripts/runBenchmark.ts` — parse signal/tasksDir from config
-- **modified:** `src/analysis/metrics/types.ts` — typecheck task classifications
-- **modified:** `src/runtime/execution/logger.ts` — verbose logging (from earlier)
-- **modified:** `src/scripts/runZCA.ts` — --verbose flag (from earlier)
+## Open Questions
+- How to design L2/L3 tasks where the naive projector reliably fails (not just sometimes)
+- Whether `extractFailingSymbol` should be adapted for tsc output (currently test-oriented)
+- Whether bounded parallel execution in the benchmark runner would meaningfully reduce wall-clock time
 
 ## Architecture Shape
 ```
@@ -119,11 +113,5 @@ Typecheck benchmark surface is implemented and wired end-to-end. Three plumbing 
       └──────────────────────────────────┘
 ```
 
-## Open Questions
-- will the baseline agent's exploration loop handle `tsc` errors as effectively as test errors?
-- should the typecheck prompt include the specific error code and line for better targeting?
-- is `npx tsc --noEmit` startup latency acceptable or should we cache the compiler?
-- should future tasks include multi-file type errors (L2/L3 locality)?
-
 ## Next Minimal Step
-Run the typecheck benchmark end-to-end with `npm run benchmark -- configs/benchmark-typecheck.json` and record results. Then assess whether the projection architecture holds or needs adjustment before adding more tasks.
+Run the SWE-agent benchmark with `npm run benchmark -- configs/benchmark-with-swe-agent.json` and record results. Then design harder L2/L3 typecheck tasks where the naive projector reliably fails.

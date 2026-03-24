@@ -102,7 +102,7 @@ How obvious the bug source is from the failure signal.
 
 # Agents compared
 
-Three agents are evaluated.
+Four agents are evaluated.
 
 ## Baseline agent
 
@@ -119,6 +119,14 @@ repeat
 ```
 
 Context grows across iterations. A "step" is counted only when the agent makes an edit and re-runs verification. Read-only tool calls (search, read) are free sub-iterations within each step, so the agent has room to explore before committing a change.
+
+---
+
+## mini-SWE-agent (external baseline)
+
+An external coding agent used as a second baseline for comparison. [mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent) is a compact autonomous software-engineering agent from the SWE-bench ecosystem.
+
+It runs the same tasks, in the same sandboxes, evaluated by the same verifiers. The benchmark harness invokes it as a subprocess and collects metrics externally. This provides a recognizable external reference point without changing the benchmark architecture.
 
 ---
 
@@ -255,6 +263,15 @@ At the same time, some L2 tasks still appear soft or locally guessable, so the c
 
 ---
 
+# Current interpretation
+
+- **Projection vs baseline** is strongly supported across both test and typecheck surfaces. The baseline agent consistently fails by exploring without editing, regardless of failure signal.
+- **Typecheck generalization** is strongly supported. The same projection/edit loop, with no changes to projectors or agent loops, produces clean results on TypeScript compiler errors.
+- **Adaptive vs naive** is now cleanly supported by `unresolved_cross_import`, where the naive projector fails across 5 steps (it only sees the anchor file) while the adaptive projector solves it in 1 step (it follows imports to include context).
+- **More hard L2 tasks are still needed.** Two of three L2 tasks were solved by naive — likely because the model could guess the correct fix from the anchor file alone. Tasks where the fix is not locally inferrable are needed to further stress the naive/adaptive boundary.
+
+---
+
 # Key findings
 
 ### Execution architecture strongly affects agent behavior
@@ -342,6 +359,15 @@ If you want to run the compiler-driven benchmark:
 npm run benchmark -- configs/benchmark-typecheck.json
 ```
 
+To run the benchmark including mini-SWE-agent as an external baseline:
+
+```bash
+pip install mini-swe-agent
+npm run benchmark -- configs/benchmark-with-swe-agent.json
+```
+
+mini-SWE-agent is a Python CLI. It must be installed separately and available as `mini` on your PATH. The adapter invokes it as a subprocess and does not require any other Python dependencies in this repository.
+
 ---
 
 # Repository structure
@@ -364,6 +390,7 @@ experiments/tasks-typecheck/            # compiler-driven benchmark task definit
 src/
   agents/baseline/                      # long-context baseline agent
   agents/zca/                           # ZCA agent + naive/adaptive projectors
+  agents/sweAgent/                      # mini-SWE-agent subprocess adapter
   model/                                # model client abstraction
   runtime/                              # sandbox execution and tool registry
   analysis/                             # result types and metrics
@@ -373,6 +400,7 @@ configs/
   benchmark.json                        # same-model (Sonnet) test benchmark
   benchmark-cross-model.json            # cross-model (Opus vs Haiku) test benchmark
   benchmark-typecheck.json              # typecheck-driven benchmark
+  benchmark-with-swe-agent.json         # test benchmark with mini-SWE-agent baseline
 
 results/                                # benchmark output JSON files
 ```

@@ -1,6 +1,6 @@
 {
   "results": [
-    {
+  {
       "task": "wrong_return_type",
       "agent": "baseline",
       "success": false,
